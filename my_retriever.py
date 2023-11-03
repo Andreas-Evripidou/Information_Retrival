@@ -12,6 +12,7 @@ class Retrieve:
         self.num_docs = self.compute_number_of_documents()
         self.cf_dict = self.compute_cf()
         self.df_dict = self.compute_df()
+        self.doc_term_matrix = self.compute_doc_term_matrix()
         # self.idf_dict = self.compute_idf()
         # write self.index to file
         open("help/index.txt", "w").write(str(self.index))
@@ -30,7 +31,7 @@ class Retrieve:
     # of doc ids for relevant docs (in rank order).
     def for_query(self, query):
         query_set = set(query)
-        matrix = self.choose_weight_scheme(query, query_set)
+        matrix = self.doc_term_matrix
         scores = {}
         query_vector = self.compute_query_vector(query, query_set)
         
@@ -46,66 +47,69 @@ class Retrieve:
         ranked_docs = [doc_id + 1 for doc_id in ranked_docs]
 
         return ranked_docs
-    
-    def choose_weight_scheme(self, query, query_set):
-        match self.term_weighting:
-                case 'binary':
-                    return self.compute_binary_matrix(query_set)
-                case 'tf':
-                    return self.tf_model(query)
-                case 'tfidf':
-                    return self.tfidf_model(query)
-                case _:
-                    return self.boolean_model(query)
 
     # Method performing binary comperation for a single query
     # Returns a m x n document-term matrix where:
     # m is the number of documents in the collection
     # n is the number of terms in the query
     # The values in the matrix are the frequency of the term in the document
-    def compute_binary_matrix(self, query_set):
+    # For each vector, we also compute the denominator for the cosine similarity
+    def compute_doc_term_matrix(self):
+        # Initialise the document-term matrix
         doc_term_matrix = []
+       
         # For each document in the collection
         for doc_id in self.doc_ids:
-            doc = []
+           
+            # Initialise the document vector    
+            doc = {}
+            # Initialise the denominator for the cosine similarity
+            doc['ENUMERATOR'] = 0
+           
             # For each term in the query
-            for term in query_set:
-                # If the term is not in the index, skip it
-                if term not in self.index:
-                    doc.append(0)
+            for term in self.index:
                 # If the term is in the document, add the frequency
-                elif doc_id in self.index[term]:
-                    doc.append(self.index[term][doc_id])
+                if doc_id in self.index[term]:
+                    doc[term] = self.index[term][doc_id]
+                    # Compute the denominator for the cosine similarity
+                    doc['ENUMERATOR'] += self.index[term][doc_id] ** 2
+                
                 # If the term is not in the document, add 0
                 else:
-                    doc.append(0)
+                    doc[term] = 0
+            
+            # Compute the denominator for the cosine similarity
+            doc['DENOMINATOR'] = math.sqrt(doc['ENUMERATOR'])
+            # Add the document vector to the document-term matrix
             doc_term_matrix.append(doc)
         return doc_term_matrix
     
     # Method for finding the cosine similarity between a query and a document
     # Returns the cosine similarity between the two vectors
     def cosine_similarity(self, query_vec, doc_vec):
-        # If there is no query terms in the document, return -100
-        if sum(doc_vec) == 0:
-            return -100
-        
-        if sum(query_vec) == 0:
-            print("Query vector is 0 -------------------------------------------------")
 
         numerator = 0
-        doc_denominator = 0
-        for i in range(len(query_vec)):
-            numerator += query_vec[i] * doc_vec[i]
-            doc_denominator += doc_vec[i]**2
-        denominator = math.sqrt(doc_denominator)
-        return numerator / denominator
+        doc_denominator = doc_vec['DENOMINATOR']
+        for term in query_vec:
+            numerator += query_vec[term] * doc_vec[term]
+
+
+        if doc_denominator == 0:
+            return -100
+        
+        return numerator / doc_denominator
 
     # Method for finding the term frequency for a single query
     # Returns t vectore of term frequencies:
     def compute_query_vector(self, query, query_set):
-        query_vector = []
+        query_vector = {}
         for term in query_set:
-            query_vector.append(query.count(term))
+            if term not in self.index:
+                continue
+            if query_vector.get(term) == None:
+                query_vector[term] = 1
+            else:
+                query_vector[term] += 1
         return query_vector
     
     # Method ranking the documents based on the cosine similarity
