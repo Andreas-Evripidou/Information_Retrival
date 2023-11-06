@@ -1,4 +1,6 @@
-
+# Author: Andreas Evripidou
+# Date: 06/11/2023
+# Description: This Python script implements a document retrieval system using the Vector Space Model.
 import math
 
 
@@ -12,34 +14,44 @@ class Retrieve:
         # Store the index and term weighting scheme
         self.index = index
         self.term_weighting = term_weighting
-        
         # Compute the number of documents in the collection
         self.num_docs = self.compute_number_of_documents()
         # Compute the document term matrix
-        self.document_vectors_length = self.compute_document_vectors_length()
+        self.document_vectors_length = self.compute_document_vector_lengths()
         
-    
     def compute_number_of_documents(self): 
         self.doc_ids = set() 
         for term in self.index:
             self.doc_ids.update(self.index[term])
         return len(self.doc_ids)
 
-    # Calculates the length of each document vector (the square
-    # root of the sum of the term weights squared)
+    # Method for computing the length of each document vector 
     # returns a dictionary of document ids and their length
-    # document_vectors_length = {doc_id: length}
-    def compute_document_vectors_length(self):
-        document_vectors_length = {}
+    # document_vector_lengths = {doc_id: length}
+    def compute_document_vector_lengths(self):
+        # Initialise the document vectors length
+        document_vector_lengths = {}
+
+        # For each term in the index
         for term in self.index.keys():
+            # For each document that contains the term
             for doc in self.index[term]:
-                if doc in document_vectors_length:
-                    document_vectors_length[doc] += self.get_weighting(term, doc) ** 2
+                # If the document is already in the document vectors length
+                # dictionary, add the term weight squared to the length
+                # Otherwise, add the document to the dictionary and set the
+                # length to the term weight squared
+                if doc in document_vector_lengths:
+                    document_vector_lengths[doc] += self.get_weighting(term, doc) ** 2
                 else:
-                    document_vectors_length[doc] = self.get_weighting(term, doc) ** 2
-        for doc in document_vectors_length.keys():
-            document_vectors_length[doc] = math.sqrt(document_vectors_length[doc])
-        return document_vectors_length
+                    document_vector_lengths[doc] = self.get_weighting(term, doc) ** 2
+        
+        # For each document in the document vectors length dictionary
+        # compute the square root of the length
+        document_vector_lengths = {
+            doc: math.sqrt(document_vector_lengths[doc]) 
+            for doc in document_vector_lengths.keys() }
+        
+        return document_vector_lengths
     
     #==============================================================================
     # Query Processing
@@ -62,8 +74,10 @@ class Retrieve:
         
         # Compute the cosine similarity between the query and each document
         scores_dict = {}
-        for doc_id in relevant_docs:
-            scores_dict[doc_id] = self.cosine_similarity(query_vector, document_vectors[doc_id], doc_id)
+        scores_dict = {
+            doc_id: self.cosine_similarity(query_vector, document_vectors[doc_id], doc_id)
+            for doc_id in relevant_docs
+            }
 
         # Rank the documents based on the cosine similarity
         ranked_docs = self.rank_documents(scores_dict)
@@ -81,7 +95,7 @@ class Retrieve:
     # Returns a dictionary of the query vector and a dictionary of the document vectors
     # document_vectors = {doc_id: {term: weight}}
     # query_vector = {term: weight}
-    def compute_vectors(self, query: list, relevant_docs: list):
+    def compute_vectors(self, query: list):
         # Initialise the query vector and the document vectors
         document_vectors = {}
         query_vector = {}
@@ -110,14 +124,10 @@ class Retrieve:
     # Method for finding the cosine similarity between a query and a document
     # Returns the cosine similarity between the two vectors
     def cosine_similarity(self, query_vector: dict , doc_vector: dict, doc_id: int):
-        # Initialise the numerator
-        numerator = 0
-
         # Compute the numerator
-        for term in query_vector:
-            if term in doc_vector:
-                numerator += query_vector[term] * doc_vector[term]
-        
+        numerator = 0
+        numerator = sum([query_vector[term] * doc_vector[term] 
+             for term in query_vector if term in doc_vector])
         # Get the denominator from the document vector
         denominator = self.document_vectors_length[doc_id]
 
